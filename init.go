@@ -17,30 +17,72 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"net/url"
+	"reflect"
 	"syscall"
+	"text/template"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/mitchellh/mapstructure"
 )
 
 type Initializer struct {
 	logger  log.Logger
-	Sources map[string]string `json:"sources"`
+	Sources map[string]string
 }
 
-func NewInitializerFromString(logger log.Logger, str string) (*Initializer, error) {
-	sources := map[string]string{}
-	if err := json.Unmarshal([]byte(str), &sources); err != nil {
+type TemplateData struct {
+	Secrets *map[string]interface{}
+}
+
+func NewInitializerFromStrings(logger log.Logger, sourcesStr, secretsStr string) (*Initializer, error) {
+	var (
+		secrets map[string]interface{}
+		sources map[string]interface{}
+		init    = &Initializer{
+			logger: logger,
+		}
+	)
+
+	if err := json.Unmarshal([]byte(sourcesStr), &sources); err != nil {
+		return nil, fmt.Errorf("failed to parse sources: %w", err)
+	}
+	if secretsStr != "" {
+		if err := json.Unmarshal([]byte(secretsStr), &secrets); err != nil {
+			return nil, fmt.Errorf("failed to parse secrets: %w", err)
+		}
+	}
+
+	decoder, err := mapstructure.NewDecoder(&mapstructure.DecoderConfig{
+		DecodeHook: func(from, to reflect.Type, data interface{}) (interface{}, error) {
+			if to.Kind() == reflect.String && from.Kind() == reflect.String {
+				tmpl, err := template.New("manifest").Parse(data.(string))
+				if err != nil {
+					return "", err
+				}
+				var buf bytes.Buffer
+				if err := tmpl.Execute(&buf, TemplateData{Secrets: &secrets}); err != nil {
+					return "", err
+				}
+				return buf.String(), nil
+			}
+			return data, nil
+		},
+		Result: &init.Sources,
+	})
+	if err != nil {
 		return nil, err
 	}
 
-	return &Initializer{
-		logger:  logger,
-		Sources: sources,
-	}, nil
+	if err := decoder.Decode(sources); err != nil {
+		return nil, fmt.Errorf("failed to parse sources: %w", err)
+	}
+
+	return init, nil
 }
 
 func (i *Initializer) Init() error {

@@ -19,6 +19,7 @@ package main
 import (
 	"os"
 
+	"github.com/diambra/init/initializer"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 )
@@ -34,12 +35,12 @@ func main() {
 		os.Exit(0)
 	}
 
-	init, err := NewInitializerFromStrings(logger, sources, os.Getenv("SECRETS"))
+	init, err := initializer.NewInitializerFromStrings(sources, os.Getenv("SECRETS"))
 	if err != nil {
 		level.Error(logger).Log("msg", err.Error())
 		os.Exit(1)
 	}
-	if err := init.Init(); err != nil {
+	if err := init.Init(logger); err != nil {
 		level.Error(logger).Log("msg", err.Error())
 		os.Exit(1)
 	}

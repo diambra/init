@@ -14,7 +14,7 @@
  limitations under the License.
 */
 
-package main
+package initializer
 
 import (
 	"bytes"
@@ -30,33 +30,44 @@ import (
 	"github.com/mitchellh/mapstructure"
 )
 
+type Sources map[string]string
+
+func (s *Sources) Validate() error {
+	for path, us := range *s {
+		if path == "" {
+			return fmt.Errorf("path for source %s is empty", us)
+		}
+		if us == "" {
+			return fmt.Errorf("url for path %s is empty", path)
+		}
+		u, err := url.Parse(us)
+		if err != nil {
+			return fmt.Errorf("invalid url %s for path %s: %w", us, path, err)
+		}
+		switch u.Scheme {
+		case "http", "https":
+			// ok
+		default:
+			return fmt.Errorf("invalid url %s for path %s: only http and https are supported", us, path)
+		}
+	}
+	return nil
+}
+
 type Initializer struct {
-	logger  log.Logger
-	Sources map[string]string
+	sources Sources
+	secrets map[string]string
 }
 
 type TemplateData struct {
-	Secrets *map[string]interface{}
+	Secrets *map[string]string
 }
 
-func NewInitializerFromStrings(logger log.Logger, sourcesStr, secretsStr string) (*Initializer, error) {
-	var (
-		secrets map[string]interface{}
-		sources map[string]interface{}
-		init    = &Initializer{
-			logger: logger,
-		}
-	)
-
-	if err := json.Unmarshal([]byte(sourcesStr), &sources); err != nil {
-		return nil, fmt.Errorf("failed to parse sources: %w", err)
+func NewInitializer(sources, secrets map[string]string) (*Initializer, error) {
+	init := &Initializer{
+		sources: sources,
+		secrets: secrets,
 	}
-	if secretsStr != "" {
-		if err := json.Unmarshal([]byte(secretsStr), &secrets); err != nil {
-			return nil, fmt.Errorf("failed to parse secrets: %w", err)
-		}
-	}
-
 	decoder, err := mapstructure.NewDecoder(&mapstructure.DecoderConfig{
 		DecodeHook: func(from, to reflect.Type, data interface{}) (interface{}, error) {
 			if to.Kind() == reflect.String && from.Kind() == reflect.String {
@@ -72,23 +83,39 @@ func NewInitializerFromStrings(logger log.Logger, sourcesStr, secretsStr string)
 			}
 			return data, nil
 		},
-		Result: &init.Sources,
+		Result: &init.sources,
 	})
 	if err != nil {
 		return nil, err
 	}
-
 	if err := decoder.Decode(sources); err != nil {
 		return nil, fmt.Errorf("failed to parse sources: %w", err)
 	}
-
 	return init, nil
 }
 
-func (i *Initializer) Init() error {
+func NewInitializerFromStrings(sourcesStr, secretsStr string) (*Initializer, error) {
+	var (
+		secrets map[string]string
+		sources map[string]string
+	)
+
+	if err := json.Unmarshal([]byte(sourcesStr), &sources); err != nil {
+		return nil, fmt.Errorf("failed to parse sources: %w", err)
+	}
+	if secretsStr != "" {
+		if err := json.Unmarshal([]byte(secretsStr), &secrets); err != nil {
+			return nil, fmt.Errorf("failed to parse secrets: %w", err)
+		}
+	}
+
+	return NewInitializer(sources, secrets)
+}
+
+func (i *Initializer) Init(logger log.Logger) error {
 	oldmask := syscall.Umask(0077)
 	defer syscall.Umask(oldmask)
-	for path, source := range i.Sources {
+	for path, source := range i.sources {
 		u, err := url.Parse(source)
 		if err != nil {
 			return err
@@ -96,7 +123,7 @@ func (i *Initializer) Init() error {
 		switch u.Scheme {
 		case "http", "https":
 			u.User = url.UserPassword(u.User.Username(), "xxx")
-			level.Info(i.logger).Log("msg", "downloading", "path", path, "source", u.String())
+			level.Info(logger).Log("msg", "downloading", "path", path, "source", u.String())
 			if err := downloadHTTP(path, source); err != nil {
 				return err
 			}
@@ -105,4 +132,24 @@ func (i *Initializer) Init() error {
 		}
 	}
 	return nil
+}
+
+func (i *Initializer) Validate() error {
+	return i.sources.Validate()
+}
+
+func (i *Initializer) Sources() string {
+	js, err := json.Marshal(i.sources)
+	if err != nil {
+		panic(err)
+	}
+	return string(js)
+}
+
+func (i *Initializer) Secrets() string {
+	js, err := json.Marshal(i.secrets)
+	if err != nil {
+		panic(err)
+	}
+	return string(js)
 }

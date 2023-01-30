@@ -7,4 +7,7 @@ require (
 	github.com/mitchellh/mapstructure v1.5.0
 )
 
-require github.com/go-logfmt/logfmt v0.5.1 // indirect
+require (
+	github.com/go-logfmt/logfmt v0.5.1 // indirect
+	github.com/google/go-cmp v0.5.9 // indirect
+)

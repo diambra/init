@@ -24,7 +24,13 @@ import (
 	"os"
 )
 
-func downloadHTTP(path, source string) error {
+type HTTPDownloader interface {
+	Download(path, source string) error
+}
+
+type httpDownloader struct{}
+
+func (d *httpDownloader) Download(path, source string) error {
 	resp, err := http.Get(source)
 	if err != nil {
 		return err

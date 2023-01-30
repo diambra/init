@@ -55,8 +55,9 @@ func (s *Sources) Validate() error {
 }
 
 type Initializer struct {
-	sources Sources
-	secrets map[string]string
+	HTTPDownloader HTTPDownloader
+	sources        Sources
+	secrets        map[string]string
 }
 
 type TemplateData struct {
@@ -65,8 +66,9 @@ type TemplateData struct {
 
 func NewInitializer(sources, secrets map[string]string) (*Initializer, error) {
 	init := &Initializer{
-		sources: sources,
-		secrets: secrets,
+		sources:        sources,
+		secrets:        secrets,
+		HTTPDownloader: &httpDownloader{},
 	}
 	decoder, err := mapstructure.NewDecoder(&mapstructure.DecoderConfig{
 		DecodeHook: func(from, to reflect.Type, data interface{}) (interface{}, error) {
@@ -116,15 +118,14 @@ func (i *Initializer) Init(logger log.Logger) error {
 	oldmask := syscall.Umask(0077)
 	defer syscall.Umask(oldmask)
 	for path, source := range i.sources {
-		u, err := url.Parse(source)
+		u, err := parseAndRedact(source)
 		if err != nil {
 			return err
 		}
 		switch u.Scheme {
 		case "http", "https":
-			u.User = url.UserPassword(u.User.Username(), "xxx")
 			level.Info(logger).Log("msg", "downloading", "path", path, "source", u.String())
-			if err := downloadHTTP(path, source); err != nil {
+			if err := i.HTTPDownloader.Download(path, source); err != nil {
 				return err
 			}
 		default:
@@ -152,4 +153,30 @@ func (i *Initializer) Secrets() string {
 		panic(err)
 	}
 	return string(js)
+}
+
+const redactedPlaceholder = "xxxxx"
+
+func parseAndRedact(s string) (*url.URL, error) {
+	u, err := url.Parse(s)
+	if err != nil {
+		return nil, err
+	}
+	if u.User != nil {
+		if _, ok := u.User.Password(); !ok {
+			// no password, so redact the username
+			u.User = url.User(redactedPlaceholder)
+		} else {
+			u.User = url.UserPassword(u.User.Username(), redactedPlaceholder)
+		}
+	}
+
+	values := u.Query()
+	for _, v := range values {
+		for i := range v {
+			v[i] = redactedPlaceholder
+		}
+	}
+	u.RawQuery = values.Encode()
+	return u, nil
 }

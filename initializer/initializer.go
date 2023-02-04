@@ -20,6 +20,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"net/url"
 	"reflect"
 	"syscall"
@@ -66,9 +67,11 @@ type TemplateData struct {
 
 func NewInitializer(sources, secrets map[string]string) (*Initializer, error) {
 	init := &Initializer{
-		sources:        sources,
-		secrets:        secrets,
-		HTTPDownloader: &httpDownloader{},
+		sources: sources,
+		secrets: secrets,
+		HTTPDownloader: &httpDownloader{
+			HTTPClient: http.DefaultClient,
+		},
 	}
 	decoder, err := mapstructure.NewDecoder(&mapstructure.DecoderConfig{
 		DecodeHook: func(from, to reflect.Type, data interface{}) (interface{}, error) {

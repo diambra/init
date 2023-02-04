@@ -19,30 +19,37 @@ package initializer
 import (
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net/http"
 	"os"
+	"path/filepath"
 )
 
 type HTTPDownloader interface {
 	Download(path, source string) error
 }
 
-type httpDownloader struct{}
+type httpDownloader struct {
+	HTTPClient *http.Client
+	root       string
+}
 
 func (d *httpDownloader) Download(path, source string) error {
-	resp, err := http.Get(source)
+	path = filepath.Join(d.root, path)
+	resp, err := d.HTTPClient.Get(source)
 	if err != nil {
 		return err
 	}
 	if resp.StatusCode > 299 || resp.StatusCode < 200 {
-		errBody, err := ioutil.ReadAll(resp.Body)
+		errBody, err := io.ReadAll(resp.Body)
 		if err != nil {
 			return fmt.Errorf("unexpected status code %d", resp.StatusCode)
 		}
 		return fmt.Errorf("unexpected status code %d: %s", resp.StatusCode, errBody)
 	}
 	defer resp.Body.Close()
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		return err
+	}
 	fh, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0755)
 	if err != nil {
 		return err

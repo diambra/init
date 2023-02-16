@@ -76,7 +76,7 @@ func NewInitializer(sources, secrets map[string]string) (*Initializer, error) {
 	decoder, err := mapstructure.NewDecoder(&mapstructure.DecoderConfig{
 		DecodeHook: func(from, to reflect.Type, data interface{}) (interface{}, error) {
 			if to.Kind() == reflect.String && from.Kind() == reflect.String {
-				tmpl, err := template.New("manifest").Parse(data.(string))
+				tmpl, err := template.New("manifest").Option("missingkey=error").Parse(data.(string))
 				if err != nil {
 					return "", err
 				}

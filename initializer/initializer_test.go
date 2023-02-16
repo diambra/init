@@ -40,6 +40,7 @@ func TestInitializer(t *testing.T) {
 		secrets     map[string]string
 		expected    Sources
 		expectedLog []string
+		expectedErr string
 	}{
 		{
 			name: "simple",
@@ -128,12 +129,32 @@ func TestInitializer(t *testing.T) {
 				"level=info msg=downloading path=/bar source=http://bar",
 			},
 		},
+		{
+			name: "template without secret",
+			sources: map[string]string{
+				"/foo": "http://foo/foo?token={{ .Secrets.token }}",
+				"/bar": "http://bar",
+			},
+			expectedErr: `failed to parse sources: 1 error(s) decoding:
+
+* error decoding '[/foo]': template: manifest:1:32: executing "manifest" at <.Secrets.token>: map has no entry for key "token"`,
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			init, err := NewInitializer(tc.sources, tc.secrets)
-			if err != nil {
-				t.Fatal(err)
+			if tc.expectedErr == "" {
+				if err != nil {
+					t.Errorf("unexpected error: %v", err)
+				}
+			} else {
+				if err == nil {
+					t.Errorf("expected error: %v", tc.expectedErr)
+				} else if diff := cmp.Diff(tc.expectedErr, err.Error()); diff != "" {
+					t.Errorf("error mismatch (-want +got):\n%s", diff)
+				}
+				return
 			}
+
 			init.HTTPDownloader = &mockHTTPDownloader{
 				downloaded: make(map[string]string),
 			}
@@ -142,9 +163,11 @@ func TestInitializer(t *testing.T) {
 				t.Errorf("sources mismatch (-want +got):\n%s", diff)
 			}
 
-			if err := init.Init(logger); err != nil {
+			err = init.Init(logger)
+			if err != nil {
 				t.Fatal(err)
 			}
+
 			if diff := cmp.Diff(tc.expected, init.HTTPDownloader.(*mockHTTPDownloader).downloaded, cmpopt); diff != "" {
 				t.Errorf("downloads mismatch (-want +got):\n%s", diff)
 			}

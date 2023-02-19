@@ -23,7 +23,6 @@ import (
 	"net/http"
 	"net/url"
 	"reflect"
-	"syscall"
 	"text/template"
 
 	"github.com/go-kit/log"
@@ -117,9 +116,7 @@ func NewInitializerFromStrings(sourcesStr, secretsStr string) (*Initializer, err
 	return NewInitializer(sources, secrets)
 }
 
-func (i *Initializer) Init(logger log.Logger) error {
-	oldmask := syscall.Umask(0077)
-	defer syscall.Umask(oldmask)
+func (i *Initializer) init(logger log.Logger) error {
 	for path, source := range i.sources {
 		u, err := parseAndRedact(source)
 		if err != nil {

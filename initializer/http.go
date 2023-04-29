@@ -24,7 +24,7 @@ import (
 	"path/filepath"
 )
 
-type HTTPDownloader interface {
+type Downloader interface {
 	Download(path, source string) error
 }
 
@@ -48,11 +48,11 @@ func (d *httpDownloader) Download(path, source string) error {
 	}
 	defer resp.Body.Close()
 	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
-		return err
+		return fmt.Errorf("failed to create directory %s: %w", filepath.Dir(path), err)
 	}
 	fh, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0755)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to create file %s: %w", path, err)
 	}
 	_, err = io.Copy(fh, resp.Body)
 	return err

@@ -23,6 +23,7 @@ import (
 	"net/http"
 	"net/url"
 	"reflect"
+	"strings"
 	"text/template"
 
 	"github.com/go-kit/log"
@@ -32,6 +33,7 @@ import (
 
 type Sources map[string]string
 
+// FIXME: Merge with the one in init
 func (s *Sources) Validate() error {
 	for path, us := range *s {
 		if path == "" {
@@ -45,7 +47,7 @@ func (s *Sources) Validate() error {
 			return fmt.Errorf("invalid url %s for path %s: %w", us, path, err)
 		}
 		switch u.Scheme {
-		case "http", "https":
+		case "http", "https", "http+zip", "https+zip", "http+unzip", "https+unzip":
 			// ok
 		default:
 			return fmt.Errorf("invalid url %s for path %s: only http and https are supported", us, path)
@@ -55,7 +57,8 @@ func (s *Sources) Validate() error {
 }
 
 type Initializer struct {
-	HTTPDownloader HTTPDownloader
+	HTTPDownloader Downloader
+	ZipProcessor   Processor
 	sources        Sources
 	secrets        map[string]string
 }
@@ -71,6 +74,7 @@ func NewInitializer(sources, secrets map[string]string) (*Initializer, error) {
 		HTTPDownloader: &httpDownloader{
 			HTTPClient: http.DefaultClient,
 		},
+		ZipProcessor: &ZipProcessor{},
 	}
 	decoder, err := mapstructure.NewDecoder(&mapstructure.DecoderConfig{
 		DecodeHook: func(from, to reflect.Type, data interface{}) (interface{}, error) {
@@ -118,18 +122,25 @@ func NewInitializerFromStrings(sourcesStr, secretsStr string) (*Initializer, err
 
 func (i *Initializer) init(logger log.Logger) error {
 	for path, source := range i.sources {
-		u, err := parseAndRedact(source)
+		u, processor, redactedURL, err := parseAndRedact(source)
 		if err != nil {
 			return err
 		}
 		switch u.Scheme {
 		case "http", "https":
-			level.Info(logger).Log("msg", "downloading", "path", path, "source", u.String())
-			if err := i.HTTPDownloader.Download(path, source); err != nil {
+			level.Info(logger).Log("msg", "downloading", "path", path, "source", redactedURL)
+			if err := i.HTTPDownloader.Download(path, u.String()); err != nil {
 				return err
 			}
 		default:
 			return fmt.Errorf("unsupported scheme %q", u.Scheme)
+		}
+		switch processor {
+		case "zip", "unzip":
+			level.Info(logger).Log("msg", "processing", "path", path, "processor", processor)
+			if err := i.ZipProcessor.Process(path); err != nil {
+				return err
+			}
 		}
 	}
 	return nil
@@ -157,17 +168,33 @@ func (i *Initializer) Secrets() string {
 
 const redactedPlaceholder = "xxxxx"
 
-func parseAndRedact(s string) (*url.URL, error) {
+func parseAndRedact(s string) (*url.URL, string, string, error) {
 	u, err := url.Parse(s)
 	if err != nil {
-		return nil, err
+		return nil, "", "", err
+	}
+
+	var (
+		processor string
+	)
+	parts := strings.SplitN(u.Scheme, "+", 2)
+	if len(parts) == 2 {
+		u.Scheme = parts[0]
+		processor = parts[1]
+	}
+
+	redactedURL := url.URL{
+		Scheme: u.Scheme,
+		Host:   u.Host,
+		Path:   u.Path,
+		User:   u.User,
 	}
 	if u.User != nil {
-		if _, ok := u.User.Password(); !ok {
+		if _, ok := redactedURL.User.Password(); !ok {
 			// no password, so redact the username
-			u.User = url.User(redactedPlaceholder)
+			redactedURL.User = url.User(redactedPlaceholder)
 		} else {
-			u.User = url.UserPassword(u.User.Username(), redactedPlaceholder)
+			redactedURL.User = url.UserPassword(redactedURL.User.Username(), redactedPlaceholder)
 		}
 	}
 
@@ -177,6 +204,6 @@ func parseAndRedact(s string) (*url.URL, error) {
 			v[i] = redactedPlaceholder
 		}
 	}
-	u.RawQuery = values.Encode()
-	return u, nil
+	redactedURL.RawQuery = values.Encode()
+	return u, processor, redactedURL.String(), nil
 }

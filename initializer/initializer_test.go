@@ -174,6 +174,8 @@ func TestInitializer(t *testing.T) {
 
 			if diff := cmp.Diff(tc.expectedLog, sw.slices, cmpopt); diff != "" {
 				t.Errorf("log mismatch (-want +got):\n%s", diff)
+				t.Error(sw.slices)
+				t.Error(tc.expectedLog)
 			}
 			sw.slices = nil
 

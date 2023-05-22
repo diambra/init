@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"text/template"
@@ -36,8 +37,8 @@ type Sources map[string]string
 // FIXME: Merge with the one in init
 func (s *Sources) Validate() error {
 	for path, us := range *s {
-		if path == "" {
-			return fmt.Errorf("path for source %s is empty", us)
+		if !filepath.IsLocal(path) {
+			return fmt.Errorf("invalid path %s: needs to be an relative path", path)
 		}
 		if us == "" {
 			return fmt.Errorf("url for path %s is empty", path)
@@ -61,14 +62,16 @@ type Initializer struct {
 	ZipProcessor   Processor
 	sources        Sources
 	secrets        map[string]string
+	root           string
 }
 
 type TemplateData struct {
 	Secrets *map[string]string
 }
 
-func NewInitializer(sources, secrets map[string]string) (*Initializer, error) {
+func NewInitializer(sources, secrets map[string]string, root string) (*Initializer, error) {
 	init := &Initializer{
+		root:    root,
 		sources: sources,
 		secrets: secrets,
 		HTTPDownloader: &httpDownloader{
@@ -76,6 +79,7 @@ func NewInitializer(sources, secrets map[string]string) (*Initializer, error) {
 		},
 		ZipProcessor: &ZipProcessor{},
 	}
+
 	decoder, err := mapstructure.NewDecoder(&mapstructure.DecoderConfig{
 		DecodeHook: func(from, to reflect.Type, data interface{}) (interface{}, error) {
 			if to.Kind() == reflect.String && from.Kind() == reflect.String {
@@ -99,10 +103,11 @@ func NewInitializer(sources, secrets map[string]string) (*Initializer, error) {
 	if err := decoder.Decode(sources); err != nil {
 		return nil, fmt.Errorf("failed to parse sources: %w", err)
 	}
-	return init, nil
+
+	return init, init.sources.Validate()
 }
 
-func NewInitializerFromStrings(sourcesStr, secretsStr string) (*Initializer, error) {
+func NewInitializerFromStrings(sourcesStr, secretsStr, root string) (*Initializer, error) {
 	var (
 		secrets map[string]string
 		sources map[string]string
@@ -117,7 +122,7 @@ func NewInitializerFromStrings(sourcesStr, secretsStr string) (*Initializer, err
 		}
 	}
 
-	return NewInitializer(sources, secrets)
+	return NewInitializer(sources, secrets, root)
 }
 
 func (i *Initializer) init(logger log.Logger) error {
@@ -129,7 +134,7 @@ func (i *Initializer) init(logger log.Logger) error {
 		switch u.Scheme {
 		case "http", "https":
 			level.Info(logger).Log("msg", "downloading", "path", path, "source", redactedURL)
-			if err := i.HTTPDownloader.Download(path, u.String()); err != nil {
+			if err := i.HTTPDownloader.Download(filepath.Join(i.root, path), u.String()); err != nil {
 				return err
 			}
 		default:

@@ -29,13 +29,17 @@ func main() {
 		logger = log.With(log.NewLogfmtLogger(os.Stderr), "caller", log.Caller(3))
 
 		sources = os.Getenv("SOURCES")
+		root    = os.Getenv("ROOT")
 	)
+	if root == "" {
+		root = "/sources"
+	}
 	if sources == "" {
 		level.Info(logger).Log("msg", "SOURCES not set, exiting")
 		os.Exit(0)
 	}
 
-	init, err := initializer.NewInitializerFromStrings(sources, os.Getenv("SECRETS"))
+	init, err := initializer.NewInitializerFromStrings(sources, os.Getenv("SECRETS"), root)
 	if err != nil {
 		level.Error(logger).Log("msg", err.Error())
 		os.Exit(1)

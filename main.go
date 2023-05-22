@@ -39,7 +39,7 @@ func main() {
 		os.Exit(0)
 	}
 
-	init, err := initializer.NewInitializerFromStrings(sources, os.Getenv("SECRETS"), root)
+	init, err := initializer.NewInitializerFromStrings(sources, os.Getenv("SECRETS"), os.Getenv("ASSETS"), root)
 	if err != nil {
 		level.Error(logger).Log("msg", err.Error())
 		os.Exit(1)

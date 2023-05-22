@@ -39,6 +39,7 @@ func TestInitializer(t *testing.T) {
 		name        string
 		sources     Sources
 		secrets     map[string]string
+		assets      Sources
 		expected    Sources
 		expectedLog []string
 		expectedErr string
@@ -147,10 +148,30 @@ func TestInitializer(t *testing.T) {
 			},
 			expectedErr: `invalid path ../foo: needs to be an relative path`,
 		},
+		{
+			name: "simple with assets",
+			sources: map[string]string{
+				"foo": "http://foo",
+				"bar": "http://bar",
+			},
+			assets: map[string]string{
+				"/outside/sources/baz": "http://baz",
+			},
+			expected: map[string]string{
+				"outside/sources/baz": "http://baz",
+				"foo":                 "http://foo",
+				"bar":                 "http://bar",
+			},
+			expectedLog: []string{
+				"level=debug msg=downloading path=/outside/sources/baz source=http://baz",
+				"level=info msg=downloading path=foo source=http://foo",
+				"level=info msg=downloading path=bar source=http://bar",
+			},
+		},
 	} {
 		root := "/sources"
 		t.Run(tc.name, func(t *testing.T) {
-			init, err := NewInitializer(tc.sources, tc.secrets, root)
+			init, err := NewInitializer(tc.sources, tc.secrets, tc.assets, root)
 			if tc.expectedErr == "" {
 				if err != nil {
 					t.Errorf("unexpected error: %v", err)
@@ -167,10 +188,6 @@ func TestInitializer(t *testing.T) {
 			init.HTTPDownloader = &mockHTTPDownloader{
 				root:       root,
 				downloaded: make(map[string]string),
-			}
-
-			if diff := cmp.Diff(tc.expected, init.sources, cmpopt); diff != "" {
-				t.Errorf("sources mismatch (-want +got):\n%s", diff)
 			}
 
 			err = init.Init(logger)

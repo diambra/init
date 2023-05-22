@@ -62,6 +62,7 @@ type Initializer struct {
 	ZipProcessor   Processor
 	sources        Sources
 	secrets        map[string]string
+	assets         Sources
 	root           string
 }
 
@@ -69,11 +70,12 @@ type TemplateData struct {
 	Secrets *map[string]string
 }
 
-func NewInitializer(sources, secrets map[string]string, root string) (*Initializer, error) {
+func NewInitializer(sources, secrets, assets map[string]string, root string) (*Initializer, error) {
 	init := &Initializer{
 		root:    root,
 		sources: sources,
 		secrets: secrets,
+		assets:  assets,
 		HTTPDownloader: &httpDownloader{
 			HTTPClient: http.DefaultClient,
 		},
@@ -107,10 +109,11 @@ func NewInitializer(sources, secrets map[string]string, root string) (*Initializ
 	return init, init.sources.Validate()
 }
 
-func NewInitializerFromStrings(sourcesStr, secretsStr, root string) (*Initializer, error) {
+func NewInitializerFromStrings(sourcesStr, secretsStr, assetsStr, root string) (*Initializer, error) {
 	var (
 		secrets map[string]string
 		sources map[string]string
+		assets  map[string]string
 	)
 
 	if err := json.Unmarshal([]byte(sourcesStr), &sources); err != nil {
@@ -121,19 +124,32 @@ func NewInitializerFromStrings(sourcesStr, secretsStr, root string) (*Initialize
 			return nil, fmt.Errorf("failed to parse secrets: %w", err)
 		}
 	}
+	if err := json.Unmarshal([]byte(assetsStr), &assets); err != nil {
+		return nil, fmt.Errorf("failed to parse assets: %w", err)
+	}
 
-	return NewInitializer(sources, secrets, root)
+	return NewInitializer(sources, secrets, assets, root)
 }
 
 func (i *Initializer) init(logger log.Logger) error {
-	for path, source := range i.sources {
+	if err := i.processSources(level.Info(logger), i.sources); err != nil {
+		return err
+	}
+	if err := i.processSources(level.Debug(logger), i.assets); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (i *Initializer) processSources(logger log.Logger, sources Sources) error {
+	for path, source := range sources {
 		u, processor, redactedURL, err := parseAndRedact(source)
 		if err != nil {
 			return err
 		}
 		switch u.Scheme {
 		case "http", "https":
-			level.Info(logger).Log("msg", "downloading", "path", path, "source", redactedURL)
+			logger.Log("msg", "downloading", "path", path, "source", redactedURL)
 			if err := i.HTTPDownloader.Download(filepath.Join(i.root, path), u.String()); err != nil {
 				return err
 			}
@@ -142,7 +158,7 @@ func (i *Initializer) init(logger log.Logger) error {
 		}
 		switch processor {
 		case "zip", "unzip":
-			level.Info(logger).Log("msg", "processing", "path", path, "processor", processor)
+			logger.Log("msg", "processing", "path", path, "processor", processor)
 			if err := i.ZipProcessor.Process(path); err != nil {
 				return err
 			}

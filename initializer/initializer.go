@@ -124,8 +124,10 @@ func NewInitializerFromStrings(sourcesStr, secretsStr, assetsStr, root string) (
 			return nil, fmt.Errorf("failed to parse secrets: %w", err)
 		}
 	}
-	if err := json.Unmarshal([]byte(assetsStr), &assets); err != nil {
-		return nil, fmt.Errorf("failed to parse assets: %w", err)
+	if assetsStr != "" {
+		if err := json.Unmarshal([]byte(assetsStr), &assets); err != nil {
+			return nil, fmt.Errorf("failed to parse assets: %w", err)
+		}
 	}
 
 	return NewInitializer(sources, secrets, assets, root)

@@ -1,6 +1,7 @@
 package initializer
 
 import (
+	"reflect"
 	"strings"
 	"testing"
 
@@ -211,6 +212,51 @@ func TestInitializer(t *testing.T) {
 					t.Errorf("log mismatch (-want +got):\n%s", diff)
 				}
 				buf.Reset()*/
+		})
+	}
+}
+
+func TestNewInitializerFromStrings(t *testing.T) {
+	var (
+		initializerContentComparer = cmp.Comparer(func(x, y *Initializer) bool {
+			return reflect.DeepEqual(x.sources, y.sources) &&
+				reflect.DeepEqual(x.secrets, y.secrets) &&
+				reflect.DeepEqual(x.assets, y.assets)
+		})
+	)
+
+	for _, tc := range []struct {
+		name        string
+		sources     string
+		secrets     string
+		assets      string
+		expected    *Initializer
+		expectedErr string
+	}{
+		{
+			name:     "simple",
+			sources:  `{ "foo": "http://foo", "bar": "http://bar" }`,
+			expected: &Initializer{sources: map[string]string{"foo": "http://foo", "bar": "http://bar"}},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			init, err := NewInitializerFromStrings(tc.sources, tc.secrets, tc.assets, "/sources")
+			if tc.expectedErr == "" {
+				if err != nil {
+					t.Errorf("unexpected error: %v", err)
+				}
+			} else {
+				if err == nil {
+					t.Errorf("expected error: %v", tc.expectedErr)
+				} else if diff := cmp.Diff(tc.expectedErr, err.Error()); diff != "" {
+					t.Errorf("error mismatch (-want +got):\n%s", diff)
+				}
+				return
+			}
+
+			if diff := cmp.Diff(tc.expected, init, initializerContentComparer); diff != "" {
+				t.Errorf("initializer mismatch (-want +got):\n%s", diff)
+			}
 		})
 	}
 }

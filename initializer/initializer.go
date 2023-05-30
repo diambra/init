@@ -34,6 +34,14 @@ import (
 
 type Sources map[string]string
 
+func (s *Sources) Copy() Sources {
+	c := make(Sources)
+	for k, v := range *s {
+		c[k] = v
+	}
+	return c
+}
+
 // FIXME: Merge with the one in init
 func (s *Sources) Validate() error {
 	for path, us := range *s {
@@ -70,10 +78,10 @@ type TemplateData struct {
 	Secrets *map[string]string
 }
 
-func NewInitializer(sources, secrets, assets map[string]string, root string) (*Initializer, error) {
+func NewInitializer(sources Sources, secrets, assets map[string]string, root string) (*Initializer, error) {
 	init := &Initializer{
 		root:    root,
-		sources: sources,
+		sources: sources.Copy(),
 		secrets: secrets,
 		assets:  assets,
 		HTTPDownloader: &httpDownloader{

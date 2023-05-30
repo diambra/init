@@ -172,6 +172,7 @@ func TestInitializer(t *testing.T) {
 	} {
 		root := "/sources"
 		t.Run(tc.name, func(t *testing.T) {
+			sourcesCopy := tc.sources.Copy()
 			init, err := NewInitializer(tc.sources, tc.secrets, tc.assets, root)
 			if tc.expectedErr == "" {
 				if err != nil {
@@ -194,6 +195,10 @@ func TestInitializer(t *testing.T) {
 			err = init.Init(logger)
 			if err != nil {
 				t.Fatal(err)
+			}
+
+			if diff := cmp.Diff(tc.sources, sourcesCopy, cmpopt); diff != "" {
+				t.Errorf("initializer modified sources mismatch (-want +got):\n%s", diff)
 			}
 
 			if diff := cmp.Diff(tc.expected, init.HTTPDownloader.(*mockHTTPDownloader).downloaded, cmpopt); diff != "" {

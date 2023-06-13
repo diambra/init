@@ -173,7 +173,7 @@ func TestInitializer(t *testing.T) {
 		root := "/sources"
 		t.Run(tc.name, func(t *testing.T) {
 			sourcesCopy := tc.sources.Copy()
-			init, err := NewInitializer(tc.sources, tc.secrets, tc.assets, root)
+			init, err := NewInitializer(logger, tc.sources, tc.secrets, tc.assets, root)
 			if tc.expectedErr == "" {
 				if err != nil {
 					t.Errorf("unexpected error: %v", err)
@@ -192,7 +192,7 @@ func TestInitializer(t *testing.T) {
 				downloaded: make(map[string]string),
 			}
 
-			err = init.Init(logger)
+			err = init.Init()
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -228,6 +228,7 @@ func TestNewInitializerFromStrings(t *testing.T) {
 				reflect.DeepEqual(x.secrets, y.secrets) &&
 				reflect.DeepEqual(x.assets, y.assets)
 		})
+		logger = log.NewNopLogger()
 	)
 
 	for _, tc := range []struct {
@@ -245,7 +246,7 @@ func TestNewInitializerFromStrings(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			init, err := NewInitializerFromStrings(tc.sources, tc.secrets, tc.assets, "/sources")
+			init, err := NewInitializerFromStrings(logger, tc.sources, tc.secrets, tc.assets, "/sources")
 			if tc.expectedErr == "" {
 				if err != nil {
 					t.Errorf("unexpected error: %v", err)

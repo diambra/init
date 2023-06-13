@@ -39,12 +39,12 @@ func main() {
 		os.Exit(0)
 	}
 
-	init, err := initializer.NewInitializerFromStrings(sources, os.Getenv("SECRETS"), os.Getenv("ASSETS"), root)
+	init, err := initializer.NewInitializerFromStrings(logger, sources, os.Getenv("SECRETS"), os.Getenv("ASSETS"), root)
 	if err != nil {
 		level.Error(logger).Log("msg", err.Error())
 		os.Exit(1)
 	}
-	if err := init.Init(logger); err != nil {
+	if err := init.Init(); err != nil {
 		level.Error(logger).Log("msg", err.Error())
 		os.Exit(1)
 	}

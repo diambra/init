@@ -51,22 +51,36 @@ func (s *Sources) Validate() error {
 		if us == "" {
 			return fmt.Errorf("url for path %s is empty", path)
 		}
-		u, err := url.Parse(us)
+		u, processor, redactedURL, err := parseAndRedact(us)
 		if err != nil {
-			return fmt.Errorf("invalid url %s for path %s: %w", us, path, err)
+			return fmt.Errorf("invalid url %s for path %s: %w", redactedURL, path, err)
 		}
 		switch u.Scheme {
-		case "http", "https", "http+zip", "https+zip", "http+unzip", "https+unzip":
-			// ok
+		case "http", "https":
+			switch processor {
+			case "", "zip", "unzip":
+				// ok
+			default:
+				return fmt.Errorf("invalid processor %s for path %s: only zip and unzip are supported", processor, path)
+			}
+		case "git":
+			switch processor {
+			case "https", "http":
+				// ok
+			default:
+				return fmt.Errorf("invalid processor %s for path %s: only http(s) are supported", processor, path)
+			}
 		default:
-			return fmt.Errorf("invalid url %s for path %s: only http and https are supported", us, path)
+			return fmt.Errorf("invalid url %s for path %s: only http(s) and git+http(s) are supported", redactedURL, path)
 		}
 	}
 	return nil
 }
 
 type Initializer struct {
+	logger         log.Logger
 	HTTPDownloader Downloader
+	GitDownloader  Downloader
 	ZipProcessor   Processor
 	sources        Sources
 	secrets        map[string]string
@@ -78,8 +92,9 @@ type TemplateData struct {
 	Secrets *map[string]string
 }
 
-func NewInitializer(sources Sources, secrets, assets map[string]string, root string) (*Initializer, error) {
+func NewInitializer(logger log.Logger, sources Sources, secrets, assets map[string]string, root string) (*Initializer, error) {
 	init := &Initializer{
+		logger:  logger,
 		root:    root,
 		sources: sources.Copy(),
 		secrets: secrets,
@@ -87,7 +102,8 @@ func NewInitializer(sources Sources, secrets, assets map[string]string, root str
 		HTTPDownloader: &httpDownloader{
 			HTTPClient: http.DefaultClient,
 		},
-		ZipProcessor: &ZipProcessor{},
+		GitDownloader: NewGitDownloader(logger),
+		ZipProcessor:  &ZipProcessor{},
 	}
 
 	decoder, err := mapstructure.NewDecoder(&mapstructure.DecoderConfig{
@@ -117,7 +133,7 @@ func NewInitializer(sources Sources, secrets, assets map[string]string, root str
 	return init, init.sources.Validate()
 }
 
-func NewInitializerFromStrings(sourcesStr, secretsStr, assetsStr, root string) (*Initializer, error) {
+func NewInitializerFromStrings(logger log.Logger, sourcesStr, secretsStr, assetsStr, root string) (*Initializer, error) {
 	var (
 		secrets map[string]string
 		sources map[string]string
@@ -138,14 +154,14 @@ func NewInitializerFromStrings(sourcesStr, secretsStr, assetsStr, root string) (
 		}
 	}
 
-	return NewInitializer(sources, secrets, assets, root)
+	return NewInitializer(logger, sources, secrets, assets, root)
 }
 
-func (i *Initializer) init(logger log.Logger) error {
-	if err := i.processSources(level.Info(logger), i.sources); err != nil {
+func (i *Initializer) init() error {
+	if err := i.processSources(level.Info(i.logger), i.sources); err != nil {
 		return err
 	}
-	if err := i.processSources(level.Debug(logger), i.assets); err != nil {
+	if err := i.processSources(level.Debug(i.logger), i.assets); err != nil {
 		return err
 	}
 	return nil
@@ -163,6 +179,13 @@ func (i *Initializer) processSources(logger log.Logger, sources Sources) error {
 			if err := i.HTTPDownloader.Download(filepath.Join(i.root, path), u.String()); err != nil {
 				return err
 			}
+		case "git":
+			logger.Log("msg", "cloning", "path", path, "source", redactedURL)
+			u.Scheme = processor
+			if err := i.GitDownloader.Download(filepath.Join(i.root, path), u.String()); err != nil {
+				return err
+			}
+
 		default:
 			return fmt.Errorf("unsupported scheme %q", u.Scheme)
 		}

@@ -10,6 +10,7 @@ import (
 	"github.com/go-kit/log/level"
 )
 
+// FIXME: The logWriter doesn't non-progress output well
 type logWriter struct {
 	logger log.Logger
 }
@@ -66,7 +67,7 @@ func (g *gitDownloader) Download(path, urls string) error {
 	cmd.Stdout = g.progress
 	cmd.Stderr = g.progress
 	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("couldn't clone repository %s: %w", urls, err)
+		return fmt.Errorf("couldn't clone repository: %w", err)
 	}
 	return nil
 }

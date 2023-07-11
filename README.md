@@ -17,9 +17,24 @@ during an agent run.
 - secrets can be refered to in `SOURCES`. Example:
 ```
 SECRETS='{"password": "my-secret"}'
-SOURCES='{"data": "https+unzip://user:{{ .Secrets.password }}example.com/my-source.zip"}'
+SOURCES='{"data": "https+unzip://user:{{ .Secrets.password }}@example.com/my-source.zip"}'
 ```
 
 ### Assets
 - same as `SOURCES` but the path can be absolute
 - used internally for additional assets
+
+## Docker
+### Build
+```
+docker build -t init .
+```
+
+### Run
+Using git:
+```bash
+docker run --rm \
+    -e SOURCES='{".": "git+https://discordianfish:{{.Secrets.gh_token}}@github.com/discordianfish/diambra-agent.git#ref=main"}' \
+    -e SECRETS="{\"gh_token\": \"$(pass dev/github/pat)\"}" \
+    -v /tmp/sources:/sources init
+```

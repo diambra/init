@@ -33,7 +33,7 @@ type gitDownloader struct {
 
 func NewGitDownloader(logger log.Logger) Downloader {
 	return &gitDownloader{
-		progress: &logWriter{level.Debug(logger)},
+		progress: &logWriter{level.Info(logger)},
 	}
 }
 

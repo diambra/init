@@ -18,10 +18,14 @@ type logWriter struct {
 func (l *logWriter) Write(p []byte) (n int, err error) {
 	s := 0
 	for i := 0; i < len(p); i++ {
-		if p[i] == '\r' {
+		if p[i] == '\n' {
 			l.logger.Log("msg", string(p[s:i]))
 			s = i + 1
 		}
+	}
+
+	if s < len(p) { // Check for remaining text after the last newline character
+		l.logger.Log("msg", string(p[s:]))
 	}
 
 	return len(p), nil
